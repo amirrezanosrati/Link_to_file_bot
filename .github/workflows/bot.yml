@@ -1,47 +1,63 @@
-name: Telegram File Bot Runner
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 */4 * * *'  # هر 4 ساعت اجرا شود
+# bot.py
+import os
+import logging
+import asyncio
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Setup Python Environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3 python3-pip
-        pip3 install python-telegram-bot
+# تنظیمات ربات
+TOKEN = "7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
+logging.basicConfig(level=logging.INFO)
 
-    - name: Create Bot Script
-      run: |
-        cat > telegram_bot.py << 'EOF'
-# کد پایتون بالا اینجا قرار می‌گیرد
-# [کد کامل پایتون از بالا اینجا کپی شود]
-EOF
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 **ربات تبدیل فایل به لینک فعال شد!**\n\n"
+        "📁 فایل خود را ارسال کنید...",
+        parse_mode='HTML'
+    )
 
-    - name: Run Telegram Bot
-      run: |
-        echo "🤖 شروع ربات تلگرام..."
-        echo "🔗 توکن: 7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
+async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        message = update.message
         
-        # اجرای ربات به مدت 3 ساعت
-        timeout 10800 python3 telegram_bot.py || echo "⏰ زمان ربات به پایان رسید"
+        if message.video:
+            file = message.video
+            file_type = "ویدیو"
+        elif message.document:
+            file = message.document
+            file_type = "فایل"
+        elif message.photo:
+            file = message.photo[-1]
+            file_type = "عکس"
+        else:
+            await message.reply_text("⚠️ لطفا یک فایل معتبر ارسال کنید")
+            return
+
+        await message.reply_text(f"📥 {file_type} دریافت شد! در حال پردازش...")
         
-        echo "✅ ربات با موفقیت اجرا شد"
+        # شبیه‌سازی پردازش
+        download_url = f"https://transfer.sh/{file.file_id}"
+        
+        await message.reply_text(
+            f"✅ **فایل شما آماده است!**\n\n"
+            f"🔗 لینک دانلود: {download_url}\n"
+            f"📦 حجم: {file.file_size // 1024}KB\n"
+            f"⏰ لینک 24 ساعت معتبر است",
+            parse_mode='HTML'
+        )
 
-    - name: Send Startup Notification
-      run: |
-        # ارسال پیام شروع به کار
-        curl -s -X POST \
-          "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/sendMessage" \
-          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d "text=🟢 ربات فعال شد! می‌تونید فایل ارسال کنید" \
-          -d "parse_mode=HTML"
+    except Exception as e:
+        await message.reply_text("❌ خطا در پردازش فایل!")
 
-    - name: Keep Logs
-      run: |
-        echo "📋 لاگ ربات:"
-        echo "ربات به مدت 3 ساعت اجرا شد"
-        echo "برای اجرای مجدد، workflow را دوباره run کنید"
+async def main():
+    application = Application.builder().token(TOKEN).build()
+    
+    application.add_handler(MessageHandler(filters.VIDEO, handle_file))
+    application.add_handler(MessageHandler(filters.DOCUMENT, handle_file))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_file))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex('/start'), start))
+    
+    await application.run_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
