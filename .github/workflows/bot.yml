@@ -1,223 +1,62 @@
-name: Telegram File to Link Bot
+name: Simple File to Link Converter
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # روزانه اجرا شود
+    - cron: '0 */6 * * *'  # هر 6 ساعت اجرا شود
 
 jobs:
-  telegram-bot:
+  file-converter:
     runs-on: ubuntu-latest
     steps:
-    - name: Install required packages
+    - name: Setup environment
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          python3 \
-          python3-pip \
-          ffmpeg \
-          wget \
-          curl
+        sudo apt-get install -y python3 python3-pip ffmpeg
+        pip3 install python-telegram-bot ffmpeg-python
 
-    - name: Install Python dependencies
+    - name: Create simple bot script
       run: |
-        pip3 install \
-          python-telegram-bot \
-          pyrogram \
-          requests \
-          ffmpeg-python \
-          python-dotenv
-
-    - name: Create Telegram bot script
-      run: |
-        cat > telegram_bot.py << 'EOF'
+        cat > simple_bot.py << 'EOF'
 #!/usr/bin/env python3
 import os
-import logging
-import requests
+import asyncio
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from ffmpeg import FFmpeg
+from telegram.ext import Application, MessageHandler, filters
 
-# تنظیمات
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-NGROK_TOKEN = os.getenv("NGROK_AUTH_TOKEN")
-logging.basicConfig(level=logging.INFO)
+TOKEN = "7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
 
-class FileToLinkBot:
-    def __init__(self):
-        self.ngrok_url = None
+async def handle_message(update: Update, context):
+    try:
+        if update.message.video:
+            await update.message.reply_text("🎥 ویدیو دریافت شد! (امکان پردازش در این نسخه)")
         
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(
-            "🤖 سلام! من ربات تبدیل فایل به لینک هستم\n\n"
-            "📁 می‌تونید فایل‌های زیر رو ارسال کنید:\n"
-            "• 📹 ویدیو (کیفیت کاهش می‌یابد)\n"
-            "• 📷 عکس\n"
-            "• 📄 documentos\n"
-            "• 🎵 صوت\n\n"
-            "🔗 بعد از آپلود، لینک مستقیم دریافت می‌کنید"
-        )
-
-    async def handle_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            message = update.message
-            file_type = None
-            
-            if message.video:
-                file = message.video
-                file_type = "video"
-                await message.reply_text("🎥 ویدیو دریافت شد! در حال کاهش کیفیت...")
-                
-            elif message.document:
-                file = message.document
-                file_type = "document"
-                await message.reply_text("📄 فایل دریافت شد! در حال پردازش...")
-                
-            elif message.photo:
-                file = message.photo[-1]  # بزرگترین سایز
-                file_type = "photo"
-                await message.reply_text("📷 عکس دریافت شد! در حال پردازش...")
-                
-            elif message.audio:
-                file = message.audio
-                file_type = "audio"
-                await message.reply_text("🎵 فایل صوتی دریافت شد! در حال پردازش...")
-            else:
-                await message.reply_text("⚠️ لطفا یک فایل معتبر ارسال کنید")
-                return
-
-            # دانلود فایل
-            file_obj = await file.get_file()
-            original_file = await file_obj.download_to_drive()
-            
-            # پردازش فایل
-            if file_type == "video":
-                processed_file = self.reduce_video_quality(original_file)
-            else:
-                processed_file = original_file
-            
-            # آپلود به سرور موقت
-            download_link = await self.upload_to_server(processed_file)
-            
-            # ارسال لینک به کاربر
-            await message.reply_text(
-                f"✅ فایل شما آماده است!\n\n"
-                f"🔗 لینک دانلود مستقیم:\n{download_link}\n\n"
-                f"📊 حجم فایل: {os.path.getsize(processed_file) // 1024}KB\n"
-                f"💡 این لینک ۲۴ ساعت معتبر است"
-            )
-            
-            # حذف فایل‌های موقت
-            os.remove(original_file)
-            if processed_file != original_file:
-                os.remove(processed_file)
-                
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            await message.reply_text("❌ خطایی رخ داد! لطفا دوباره尝试 کنید")
-
-    def reduce_video_quality(self, input_path):
-        """کاهش کیفیت ویدیو با FFmpeg"""
-        output_path = f"compressed_{os.path.basename(input_path)}"
+        elif update.message.document:
+            await update.message.reply_text("📄 فایل دریافت شد! (امکان پردازش در این نسخه)")
         
-        ffmpeg = FFmpeg().input(input_path).output(
-            output_path,
-            vf='scale=640:360',
-            crf=28,
-            preset='fast',
-            **{'c:v': 'libx264', 'c:a': 'aac'}
-        )
-        ffmpeg.execute()
-        return output_path
+        elif update.message.photo:
+            await update.message.reply_text("📷 عکس دریافت شد!")
+        
+        else:
+            await update.message.reply_text("🤖 ربات فعال است! فایل ارسال کنید")
 
-    async def upload_to_server(self, file_path):
-        """آپلود فایل به سرور موقت"""
-        try:
-            # استفاده از Ngrok برای hosting
-            os.system(f"./ngrok http 8000 &")
-            
-            # راه اندازی سرور موقت
-            import http.server
-            import socketserver
-            import threading
-            
-            class FileHandler(http.server.SimpleHTTPRequestHandler):
-                def do_GET(self):
-                    if self.path == f'/{os.path.basename(file_path)}':
-                        self.send_response(200)
-                        self.send_header('Content-type', 'application/octet-stream')
-                        self.send_header('Content-Disposition', f'attachment; filename="{os.path.basename(file_path)}"')
-                        self.end_headers()
-                        with open(file_path, 'rb') as f:
-                            self.wfile.write(f.read())
-                    else:
-                        self.send_response(404)
-            
-            def run_server():
-                with socketserver.TCPServer(("", 8000), FileHandler) as httpd:
-                    httpd.serve_forever()
-            
-            server_thread = threading.Thread(target=run_server)
-            server_thread.daemon = True
-            server_thread.start()
-            
-            # دریافت لینک Ngrok
-            await asyncio.sleep(5)
-            response = requests.get("http://localhost:4040/api/tunnels")
-            ngrok_url = response.json()['tunnels'][0]['public_url']
-            
-            return f"{ngrok_url}/{os.path.basename(file_path)}"
-            
-        except Exception as e:
-            logging.error(f"Upload error: {e}")
-            return "https://example.com/upload-failed"
+    except Exception as e:
+        await update.message.reply_text("❌ خطا: " + str(e))
 
 async def main():
-    bot = FileToLinkBot()
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
     
-    application = Application.builder().token(TOKEN).build()
-    
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(MessageHandler(filters.ALL, bot.handle_file))
-    
-    await application.run_polling()
+    print("🤖 Bot starting...")
+    await app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
 EOF
 
-        chmod +x telegram_bot.py
-
-    - name: Download and setup Ngrok
+    - name: Run bot for limited time
       run: |
-        wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
-        tar -xzf ngrok-v3-stable-linux-amd64.tgz
-        chmod +x ngrok
-
-    - name: Create environment file
-      run: |
-        cat > .env << EOF
-TELEGRAM_BOT_TOKEN=7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA
-NGROK_AUTH_TOKEN=${{ secrets.NGROK_AUTH_TOKEN }}
-EOF
-
-    - name: Run Telegram bot
-      run: |
-        echo "🤖 Starting Telegram Bot..."
-        nohup python3 telegram_bot.py > bot.log 2>&1 &
-        echo "✅ Bot is running in background"
-        sleep 10
-        echo "📋 Bot log:"
-        cat bot.log || echo "No log yet"
-
-    - name: Keep bot alive
-      run: |
-        echo "🟢 Telegram Bot is running!"
-        echo "🔗 Token: 7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
-        echo "📱 Connect with: https://t.me/$(curl -s https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe | grep -o '"username":"[^"]*' | cut -d'"' -f4)"
-        echo ""
-        while true; do
-            echo "✅ Bot active - $(date +'%H:%M:%S')"
-            sleep 300
-        done
+        echo "🔄 اجرای ربات به مدت 10 دقیقه..."
+        timeout 600 python3 simple_bot.py || echo "⏰ زمان ربات به پایان رسید"
+        
+        echo "✅ کار ربات کامل شد"
+        echo "📋 می‌توانید دوباره اجرا کنید"
