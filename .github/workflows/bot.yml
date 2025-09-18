@@ -1,39 +1,23 @@
-name: Quick File Bot Test
+name: Use Existing Bot Services
 on:
   workflow_dispatch:
 
 jobs:
-  test-bot:
+  external-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # فقط 5 دقیقه اجرا شود
     steps:
-    - name: Test Telegram connection
+    - name: Use external file services
       run: |
-        echo "🔗 تست اتصال به Telegram..."
-        curl -s "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe" | python3 -m json.tool
-        
-        echo "✅ توکن ربات معتبر است"
-        echo "🤖 نام ربات: $(curl -s https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe | grep -o '"username":"[^"]*' | cut -d'"' -f4)"
-
-    - name: Send test message
-      run: |
-        echo "📤 ارسال پیام تست..."
-        curl -s -X POST \
-          "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/sendMessage" \
-          -d "chat_id=123456789" \
-          -d "text=🤖 ربات آماده است! (تست از GitHub Actions)" \
-          || echo "⚠️ ارسال پیام ناموفق بود"
-
-    - name: Show bot info
-      run: |
-        echo "=========================================="
-        echo "🤖 TELEGRAM BOT INFORMATION"
-        echo "=========================================="
-        echo "Token: 7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
-        echo "Bot URL: https://t.me/$(curl -s https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe | grep -o '"username":"[^"]*' | cut -d'"' -f4)"
+        echo "🌐 استفاده از سرویس‌های آماده:"
         echo ""
-        echo "💡 برای استفاده:"
-        echo "1. با ربات در Telegram چت کنید"
-        echo "2. فایل ارسال کنید"
-        echo "3. ربات پاسخ خواهد داد"
-        echo "=========================================="
+        echo "1. transfer.sh - آپلود فایل رایگان:"
+        echo "   curl --upload-file file.txt https://transfer.sh/file.txt"
+        echo ""
+        echo "2. file.io - آپلود موقت:"
+        echo "   curl -F 'file=@file.txt' https://file.io"
+        echo ""
+        echo "3. tmpfiles.org - آپلود سریع:"
+        echo "   curl -F 'file=@file.txt' https://tmpfiles.org/api/v1/upload"
+        echo ""
+        echo "🤖 برای کاهش کیفیت ویدیو:"
+        echo "ffmpeg -i input.mp4 -vf 'scale=640:360' -crf 28 output.mp4"
