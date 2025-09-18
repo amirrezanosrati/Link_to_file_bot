@@ -1,78 +1,47 @@
-name: Free Cloud File Server
+name: Telegram File Bot Runner
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'  # هر ۶ ساعت
+    - cron: '0 */4 * * *'  # هر 4 ساعت اجرا شود
 
 jobs:
-  file-server:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-    - name: Setup Python HTTP Server
+    - name: Setup Python Environment
       run: |
-        # ایجاد یک فایل نمونه برای تست
-        echo "🔄 ایجاد سرور فایل موقت..."
-        cat > share-file.txt << EOF
-        فایل تستی ایجاد شده در $(date)
-        حجم: 1KB
-        ایجاد شده توسط GitHub File Server
-        برای اشتراک‌گذاری موقت
-        EOF
+        sudo apt-get update
+        sudo apt-get install -y python3 python3-pip
+        pip3 install python-telegram-bot
 
-        # راه‌اندازی سرور HTTP
-        python3 -m http.server 8000 &
-        SERVER_PID=$!
-        echo $SERVER_PID > server.pid
-        sleep 3
-
-    - name: Setup Ngrok Tunnel
+    - name: Create Bot Script
       run: |
-        wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
-        tar -xzf ngrok-v3-stable-linux-amd64.tgz
-        chmod +x ngrok
+        cat > telegram_bot.py << 'EOF'
+# کد پایتون بالا اینجا قرار می‌گیرد
+# [کد کامل پایتون از بالا اینجا کپی شود]
+EOF
+
+    - name: Run Telegram Bot
+      run: |
+        echo "🤖 شروع ربات تلگرام..."
+        echo "🔗 توکن: 7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
         
-        ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-        ./ngrok http 8000 --log=stdout > ngrok.log 2>&1 &
-        sleep 15
-
-    - name: Get Public Link
-      run: |
-        # دریافت لینک عمومی
-        PUBLIC_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o 'https://[^"]*' | head -1)
-        FILE_URL="${PUBLIC_URL}/share-file.txt"
+        # اجرای ربات به مدت 3 ساعت
+        timeout 10800 python3 telegram_bot.py || echo "⏰ زمان ربات به پایان رسید"
         
-        echo "PUBLIC_URL=$PUBLIC_URL" >> $GITHUB_ENV
-        echo "FILE_URL=$FILE_URL" >> $GITHUB_ENV
+        echo "✅ ربات با موفقیت اجرا شد"
 
-    - name: Send to Telegram
+    - name: Send Startup Notification
       run: |
-        # ارسال لینک به تلگرام
+        # ارسال پیام شروع به کار
         curl -s -X POST \
           "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/sendMessage" \
           -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d "text=🔗 لینک فایل: ${{ env.FILE_URL }}" \
+          -d "text=🟢 ربات فعال شد! می‌تونید فایل ارسال کنید" \
           -d "parse_mode=HTML"
 
-    - name: Display Info
+    - name: Keep Logs
       run: |
-        echo "=========================================="
-        echo "🌐 FILE SERVER ACTIVE!"
-        echo "=========================================="
-        echo "🔗 Public URL: ${{ env.PUBLIC_URL }}"
-        echo "📁 File URL: ${{ env.FILE_URL }}"
-        echo "⏰ Valid for: 6 hours"
-        echo ""
-        echo "💡 برای آپلود فایل‌های خود:"
-        echo "1. فایل را در ریپوزیتوری قرار دهید"
-        echo "2. نام فایل را جایگزین 'share-file.txt' کنید"
-        echo "3. workflow را دوباره اجرا کنید"
-        echo "=========================================="
-
-    - name: Wait for file requests
-      run: |
-        echo "🔄 سرور فعال است و منتظر درخواست‌ها..."
-        echo "📡 در حال سرویس‌دهی روی پورت 8000"
-        echo "🔗 لینک: ${{ env.PUBLIC_URL }}"
-        
-        # نگه‌داری سرور برای ۶ ساعت
-        sleep 21600
+        echo "📋 لاگ ربات:"
+        echo "ربات به مدت 3 ساعت اجرا شد"
+        echo "برای اجرای مجدد، workflow را دوباره run کنید"
