@@ -1,23 +1,78 @@
-name: Use Existing Bot Services
+name: Free Cloud File Server
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'  # هر ۶ ساعت
 
 jobs:
-  external-bot:
+  file-server:
     runs-on: ubuntu-latest
     steps:
-    - name: Use external file services
+    - name: Setup Python HTTP Server
       run: |
-        echo "🌐 استفاده از سرویس‌های آماده:"
+        # ایجاد یک فایل نمونه برای تست
+        echo "🔄 ایجاد سرور فایل موقت..."
+        cat > share-file.txt << EOF
+        فایل تستی ایجاد شده در $(date)
+        حجم: 1KB
+        ایجاد شده توسط GitHub File Server
+        برای اشتراک‌گذاری موقت
+        EOF
+
+        # راه‌اندازی سرور HTTP
+        python3 -m http.server 8000 &
+        SERVER_PID=$!
+        echo $SERVER_PID > server.pid
+        sleep 3
+
+    - name: Setup Ngrok Tunnel
+      run: |
+        wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+        tar -xzf ngrok-v3-stable-linux-amd64.tgz
+        chmod +x ngrok
+        
+        ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        ./ngrok http 8000 --log=stdout > ngrok.log 2>&1 &
+        sleep 15
+
+    - name: Get Public Link
+      run: |
+        # دریافت لینک عمومی
+        PUBLIC_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o 'https://[^"]*' | head -1)
+        FILE_URL="${PUBLIC_URL}/share-file.txt"
+        
+        echo "PUBLIC_URL=$PUBLIC_URL" >> $GITHUB_ENV
+        echo "FILE_URL=$FILE_URL" >> $GITHUB_ENV
+
+    - name: Send to Telegram
+      run: |
+        # ارسال لینک به تلگرام
+        curl -s -X POST \
+          "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d "text=🔗 لینک فایل: ${{ env.FILE_URL }}" \
+          -d "parse_mode=HTML"
+
+    - name: Display Info
+      run: |
+        echo "=========================================="
+        echo "🌐 FILE SERVER ACTIVE!"
+        echo "=========================================="
+        echo "🔗 Public URL: ${{ env.PUBLIC_URL }}"
+        echo "📁 File URL: ${{ env.FILE_URL }}"
+        echo "⏰ Valid for: 6 hours"
         echo ""
-        echo "1. transfer.sh - آپلود فایل رایگان:"
-        echo "   curl --upload-file file.txt https://transfer.sh/file.txt"
-        echo ""
-        echo "2. file.io - آپلود موقت:"
-        echo "   curl -F 'file=@file.txt' https://file.io"
-        echo ""
-        echo "3. tmpfiles.org - آپلود سریع:"
-        echo "   curl -F 'file=@file.txt' https://tmpfiles.org/api/v1/upload"
-        echo ""
-        echo "🤖 برای کاهش کیفیت ویدیو:"
-        echo "ffmpeg -i input.mp4 -vf 'scale=640:360' -crf 28 output.mp4"
+        echo "💡 برای آپلود فایل‌های خود:"
+        echo "1. فایل را در ریپوزیتوری قرار دهید"
+        echo "2. نام فایل را جایگزین 'share-file.txt' کنید"
+        echo "3. workflow را دوباره اجرا کنید"
+        echo "=========================================="
+
+    - name: Wait for file requests
+      run: |
+        echo "🔄 سرور فعال است و منتظر درخواست‌ها..."
+        echo "📡 در حال سرویس‌دهی روی پورت 8000"
+        echo "🔗 لینک: ${{ env.PUBLIC_URL }}"
+        
+        # نگه‌داری سرور برای ۶ ساعت
+        sleep 21600
