@@ -1,80 +1,63 @@
-name: Telegram File to Public Link
+name: Telegram Bot Test (1 hour)
 
 on:
   workflow_dispatch:
-    inputs:
-      file_path:
-        description: 'Path to file in repo'
-        required: true
-        default: 'build/output.zip'
-      chat_id:
-        description: 'Telegram chat id or channel'
-        required: true
-        default: '@yourchannel'
 
 jobs:
-  upload:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install deps
-        run: pip install requests pyngrok
+      - name: Install requests
+        run: pip install requests
 
-      - name: Upload file to Telegram & Download back
+      - name: Run Telegram Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           python - <<'PY'
-          import os, requests
+          import os, requests, time
 
-          token = os.environ['TELEGRAM_BOT_TOKEN']
-          chat_id = "${{ github.event.inputs.chat_id }}"
-          file_path = "${{ github.workspace }}/${{ github.event.inputs.file_path }}"
+          TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+          API = f"https://api.telegram.org/bot{TOKEN}"
 
-          # sendDocument
-          r = requests.post(f"https://api.telegram.org/bot{token}/sendDocument",
-                            data={"chat_id": chat_id},
-                            files={"document": open(file_path,"rb")})
-          r.raise_for_status()
-          file_id = r.json()["result"]["document"]["file_id"]
+          def get_updates(offset=None):
+              r = requests.get(f"{API}/getUpdates", params={"timeout": 30, "offset": offset})
+              return r.json().get("result", [])
 
-          # getFile
-          g = requests.get(f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}")
-          g.raise_for_status()
-          file_path_tg = g.json()["result"]["file_path"]
+          def send_message(chat_id, text):
+              requests.post(f"{API}/sendMessage", data={"chat_id": chat_id, "text": text})
 
-          # download file back
-          url = f"https://api.telegram.org/file/bot{token}/{file_path_tg}"
-          f = requests.get(url)
-          with open("downloaded_file", "wb") as out:
-              out.write(f.content)
-          print("Downloaded file from Telegram")
+          def handle_document(chat_id, file_id):
+              g = requests.get(f"{API}/getFile?file_id={file_id}").json()
+              file_path = g["result"]["file_path"]
+              link = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+              send_message(chat_id, f"📥 لینک دانلود فایل:\n{link}")
+
+          print("🤖 Bot started, running for ~1 hour...")
+          offset = None
+          start_time = time.time()
+
+          while True:
+              updates = get_updates(offset)
+              for u in updates:
+                  offset = u["update_id"] + 1
+                  msg = u.get("message", {})
+                  chat_id = msg.get("chat", {}).get("id")
+
+                  if "text" in msg and msg["text"] == "/start":
+                      send_message(chat_id, "سلام 👋 فایل رو بفرست تا لینکش رو بدم.")
+
+                  if "document" in msg:
+                      file_id = msg["document"]["file_id"]
+                      handle_document(chat_id, file_id)
+
+              if time.time() - start_time > 3600:  # 1 ساعت
+                  print("⏰ Time is up, bot shutting down.")
+                  break
+              time.sleep(2)
           PY
-
-      - name: Start HTTP server with Ngrok
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        run: |
-          python -m http.server 8080 &
-          sleep 2
-          python - <<'PY'
-          from pyngrok import ngrok
-          import os
-          auth = os.environ.get("NGROK_AUTH_TOKEN")
-          if auth:
-              ngrok.set_auth_token(auth)
-          public_url = ngrok.connect(8080, "http")
-          print("Public URL:", public_url)
-          with open("public_link.txt","w") as f:
-              f.write(str(public_url))
-          PY
-
-      - name: Show Public Link
-        run: cat public_link.txt
