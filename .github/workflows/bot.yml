@@ -1,62 +1,39 @@
-name: Simple File to Link Converter
+name: Quick File Bot Test
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */6 * * *'  # هر 6 ساعت اجرا شود
 
 jobs:
-  file-converter:
+  test-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # فقط 5 دقیقه اجرا شود
     steps:
-    - name: Setup environment
+    - name: Test Telegram connection
       run: |
-        sudo apt-get update
-        sudo apt-get install -y python3 python3-pip ffmpeg
-        pip3 install python-telegram-bot ffmpeg-python
+        echo "🔗 تست اتصال به Telegram..."
+        curl -s "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe" | python3 -m json.tool
+        
+        echo "✅ توکن ربات معتبر است"
+        echo "🤖 نام ربات: $(curl -s https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe | grep -o '"username":"[^"]*' | cut -d'"' -f4)"
 
-    - name: Create simple bot script
+    - name: Send test message
       run: |
-        cat > simple_bot.py << 'EOF'
-#!/usr/bin/env python3
-import os
-import asyncio
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters
+        echo "📤 ارسال پیام تست..."
+        curl -s -X POST \
+          "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/sendMessage" \
+          -d "chat_id=123456789" \
+          -d "text=🤖 ربات آماده است! (تست از GitHub Actions)" \
+          || echo "⚠️ ارسال پیام ناموفق بود"
 
-TOKEN = "7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
-
-async def handle_message(update: Update, context):
-    try:
-        if update.message.video:
-            await update.message.reply_text("🎥 ویدیو دریافت شد! (امکان پردازش در این نسخه)")
-        
-        elif update.message.document:
-            await update.message.reply_text("📄 فایل دریافت شد! (امکان پردازش در این نسخه)")
-        
-        elif update.message.photo:
-            await update.message.reply_text("📷 عکس دریافت شد!")
-        
-        else:
-            await update.message.reply_text("🤖 ربات فعال است! فایل ارسال کنید")
-
-    except Exception as e:
-        await update.message.reply_text("❌ خطا: " + str(e))
-
-async def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    
-    print("🤖 Bot starting...")
-    await app.run_polling()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-EOF
-
-    - name: Run bot for limited time
+    - name: Show bot info
       run: |
-        echo "🔄 اجرای ربات به مدت 10 دقیقه..."
-        timeout 600 python3 simple_bot.py || echo "⏰ زمان ربات به پایان رسید"
-        
-        echo "✅ کار ربات کامل شد"
-        echo "📋 می‌توانید دوباره اجرا کنید"
+        echo "=========================================="
+        echo "🤖 TELEGRAM BOT INFORMATION"
+        echo "=========================================="
+        echo "Token: 7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
+        echo "Bot URL: https://t.me/$(curl -s https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe | grep -o '"username":"[^"]*' | cut -d'"' -f4)"
+        echo ""
+        echo "💡 برای استفاده:"
+        echo "1. با ربات در Telegram چت کنید"
+        echo "2. فایل ارسال کنید"
+        echo "3. ربات پاسخ خواهد داد"
+        echo "=========================================="
