@@ -1,63 +1,21 @@
-# bot.py
-import os
-import logging
-import asyncio
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+name: Test Telegram Bot
+on: workflow_dispatch
 
-# تنظیمات ربات
-TOKEN = "7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA"
-logging.basicConfig(level=logging.INFO)
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 **ربات تبدیل فایل به لینک فعال شد!**\n\n"
-        "📁 فایل خود را ارسال کنید...",
-        parse_mode='HTML'
-    )
-
-async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        message = update.message
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test Bot Token
+      run: |
+        echo "🔍 testing Telegram bot token..."
+        response=$(curl -s "https://api.telegram.org/bot7897337548:AAGudjNDkUM5pUWx93mdc6kFBrSqusuj_NA/getMe")
         
-        if message.video:
-            file = message.video
-            file_type = "ویدیو"
-        elif message.document:
-            file = message.document
-            file_type = "فایل"
-        elif message.photo:
-            file = message.photo[-1]
-            file_type = "عکس"
-        else:
-            await message.reply_text("⚠️ لطفا یک فایل معتبر ارسال کنید")
-            return
-
-        await message.reply_text(f"📥 {file_type} دریافت شد! در حال پردازش...")
-        
-        # شبیه‌سازی پردازش
-        download_url = f"https://transfer.sh/{file.file_id}"
-        
-        await message.reply_text(
-            f"✅ **فایل شما آماده است!**\n\n"
-            f"🔗 لینک دانلود: {download_url}\n"
-            f"📦 حجم: {file.file_size // 1024}KB\n"
-            f"⏰ لینک 24 ساعت معتبر است",
-            parse_mode='HTML'
-        )
-
-    except Exception as e:
-        await message.reply_text("❌ خطا در پردازش فایل!")
-
-async def main():
-    application = Application.builder().token(TOKEN).build()
-    
-    application.add_handler(MessageHandler(filters.VIDEO, handle_file))
-    application.add_handler(MessageHandler(filters.DOCUMENT, handle_file))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_file))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex('/start'), start))
-    
-    await application.run_polling()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        if echo "$response" | grep -q '"ok":true'; then
+          echo "✅ توکن ربات معتبر است!"
+          username=$(echo "$response" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
+          echo "🤖 نام ربات: $username"
+          echo "🔗 آدرس: https://t.me/$username"
+        else
+          echo "❌ توکن ربات نامعتبر است"
+          echo "📋 پاسخ: $response"
+        fi
