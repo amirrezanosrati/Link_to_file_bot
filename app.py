@@ -1,61 +1,67 @@
-from flask import Flask, request
+# app.py - کد اصلاح شده
+from flask import Flask, request, jsonify
 import requests
 import os
 import logging
 
 app = Flask(__name__)
-
-# تنظیمات
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 logging.basicConfig(level=logging.INFO)
 
 @app.route('/')
 def home():
-    return "🤖 Telegram Bot is Running on Render!"
+    return "🤖 Bot Server is Running! Use /webhook for Telegram"
 
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['POST', 'GET'])
 def webhook():
     try:
+        # برای تست GET
+        if request.method == 'GET':
+            return jsonify({
+                "status": "active", 
+                "message": "Webhook endpoint is ready",
+                "token_set": bool(TOKEN)
+            })
+        
+        # برای POST requests از تلگرام
         data = request.get_json()
+        logging.info(f"📨 Received data from Telegram")
         
         if 'message' in data:
             message = data['message']
             chat_id = message['chat']['id']
             
-            if 'text' in message:
-                text = message['text']
-                if text == '/start':
-                    send_message(chat_id, "🎉 **ربات فعال شد!**\n\nارسال فایل را شروع کنید...")
-                else:
-                    send_message(chat_id, "📨 پیام شما دریافت شد!")
+            # پاسخ فوری به کاربر
+            response = requests.post(
+                f'https://api.telegram.org/bot{TOKEN}/sendMessage',
+                json={
+                    'chat_id': chat_id, 
+                    'text': '✅ ربات فعال شد! فایل ارسال کنید.',
+                    'parse_mode': 'HTML'
+                },
+                timeout=10
+            )
             
-            elif 'document' in message:
-                file = message['document']
-                send_message(chat_id, f"📄 فایل دریافت شد!\nنام: {file['file_name']}\nحجم: {file['file_size']} بایت")
+            logging.info(f"📤 Sent response to user: {response.status_code}")
             
-            elif 'video' in message:
-                video = message['video']
-                send_message(chat_id, f"🎥 ویدیو دریافت شد!\nمدت: {video['duration']} ثانیه")
-    
+        return jsonify({"status": "success"})
+        
     except Exception as e:
-        logging.error(f"Error: {e}")
-    
-    return 'OK'
+        logging.error(f"❌ Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
-def send_message(chat_id, text):
-    """ارسال پیام به کاربر"""
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML"
-    }
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        logging.error(f"Error sending message: {e}")
+@app.route('/test')
+def test():
+    return jsonify({
+        "status": "active", 
+        "token_configured": bool(TOKEN),
+        "endpoints": {
+            "home": "/",
+            "webhook": "/webhook", 
+            "test": "/test"
+        }
+    })
 
-# این خط برای Render ضروری است
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
