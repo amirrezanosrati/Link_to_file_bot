@@ -15,7 +15,7 @@ jobs:
       - name: Install deps
         run: pip install telethon pyngrok requests
 
-      - name: Run Telegram Bot with Telethon
+      - name: Run Telegram Bot with Telethon + Progress
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -40,7 +40,10 @@ jobs:
 
           # 📌 HTTP server
           def start_server():
-              httpd = HTTPServer(('0.0.0.0', 8080), SimpleHTTPRequestHandler)
+              from socketserver import ThreadingMixIn
+              class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+                  pass
+              httpd = ThreadingHTTPServer(('0.0.0.0', 8080), SimpleHTTPRequestHandler)
               httpd.serve_forever()
           threading.Thread(target=start_server, daemon=True).start()
 
@@ -52,6 +55,13 @@ jobs:
           # 📌 Telethon client
           client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
 
+          async def progress(current, total, chat_id, msg):
+              percent = int(current * 100 / total)
+              try:
+                  await client.edit_message(chat_id, msg.id, f"⬇️ در حال دانلود فایل...\n{percent}% تکمیل شده")
+              except:
+                  pass
+
           @client.on(events.NewMessage(pattern='/start'))
           async def start(event):
               await event.respond("سلام 👋 فایل، ویدیو یا عکس رو بفرست تا لینکشو بهت بدم.")
@@ -60,9 +70,17 @@ jobs:
           async def handler(event):
               if event.message.media:
                   unique_name = f"{uuid.uuid4().hex}"
-                  path = await client.download_media(event.message.media, file=unique_name)
-                  link = f"{public_url}/{os.path.basename(path)}"
-                  await event.respond(f"📥 لینک دانلود:\n{link}")
+                  notify = await event.respond("⬇️ دانلود فایل شروع شد ...")
+                  try:
+                      path = await client.download_media(
+                          event.message.media,
+                          file=unique_name,
+                          progress_callback=lambda d, t: asyncio.ensure_future(progress(d, t, event.chat_id, notify))
+                      )
+                      link = f"{public_url}/{os.path.basename(path)}"
+                      await event.respond(f"✅ دانلود کامل شد!\n📥 لینک دانلود:\n{link}")
+                  except Exception as e:
+                      await event.respond(f"❌ خطا در دانلود فایل: {str(e)}")
 
           print("🤖 Bot started, running for ~1 hour...")
           client.run_until_disconnected()
