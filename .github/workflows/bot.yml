@@ -44,7 +44,7 @@ jobs:
           auth = os.environ.get("NGROK_AUTH_TOKEN")
           if auth:
               ngrok.set_auth_token(auth)
-          public_url = ngrok.connect(8080, "http")
+          public_url = ngrok.connect(8080, "http").public_url
           print("🌍 Public URL:", public_url)
 
           def get_updates(offset=None):
@@ -56,6 +56,9 @@ jobs:
 
           def download_file(file_id, filename):
               g = requests.get(f"{API}/getFile?file_id={file_id}").json()
+              if not g.get("ok"):
+                  print("❌ getFile failed:", g)
+                  return None
               file_path = g["result"]["file_path"]
               url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
               data = requests.get(url).content
@@ -66,7 +69,7 @@ jobs:
           def handle_media(chat_id, media_type, msg):
               if media_type == "document":
                   file_id = msg["document"]["file_id"]
-                  orig_name = msg["document"]["file_name"]
+                  orig_name = msg["document"].get("file_name", "document.bin")
               elif media_type == "video":
                   file_id = msg["video"]["file_id"]
                   orig_name = "video.mp4"
@@ -80,8 +83,12 @@ jobs:
               # 📌 نام‌گذاری یکتا
               unique_name = f"{uuid.uuid4().hex}_{orig_name}"
               local_file = download_file(file_id, unique_name)
-              link = f"{public_url}/{local_file}"
-              send_message(chat_id, f"📥 لینک دانلود:\n{link}")
+
+              if local_file:
+                  link = f"{public_url}/{local_file}"
+                  send_message(chat_id, f"📥 لینک دانلود:\n{link}")
+              else:
+                  send_message(chat_id, "❌ نتونستم فایل رو دانلود کنم. دوباره امتحان کن.")
 
           print("🤖 Bot started, running for ~1 hour...")
           offset = None
