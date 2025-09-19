@@ -1,4 +1,3 @@
-# app.py - کد اصلاح شده
 from flask import Flask, request, jsonify
 import requests
 import os
@@ -15,51 +14,42 @@ def home():
 @app.route('/webhook', methods=['POST', 'GET'])
 def webhook():
     try:
-        # برای تست GET
         if request.method == 'GET':
             return jsonify({
                 "status": "active", 
-                "message": "Webhook endpoint is ready",
-                "token_set": bool(TOKEN)
+                "message": "Webhook endpoint is ready for Telegram messages",
+                "bot_token_configured": bool(TOKEN)
             })
         
-        # برای POST requests از تلگرام
+        # پردازش پیام‌های تلگرام
         data = request.get_json()
-        logging.info(f"📨 Received data from Telegram")
         
         if 'message' in data:
             message = data['message']
             chat_id = message['chat']['id']
             
-            # پاسخ فوری به کاربر
-            response = requests.post(
+            # پاسخ فوری
+            requests.post(
                 f'https://api.telegram.org/bot{TOKEN}/sendMessage',
                 json={
                     'chat_id': chat_id, 
-                    'text': '✅ ربات فعال شد! فایل ارسال کنید.',
+                    'text': '✅ ربات فعال شد! لطفا فایل ارسال کنید.',
                     'parse_mode': 'HTML'
                 },
-                timeout=10
+                timeout=5
             )
-            
-            logging.info(f"📤 Sent response to user: {response.status_code}")
             
         return jsonify({"status": "success"})
         
     except Exception as e:
-        logging.error(f"❌ Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/test')
 def test():
     return jsonify({
-        "status": "active", 
-        "token_configured": bool(TOKEN),
-        "endpoints": {
-            "home": "/",
-            "webhook": "/webhook", 
-            "test": "/test"
-        }
+        "status": "active",
+        "server": "Render",
+        "webhook_ready": True
     })
 
 if __name__ == '__main__':
