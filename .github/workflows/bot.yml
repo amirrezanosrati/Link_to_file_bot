@@ -1,4 +1,4 @@
-name: Telegram Bot with Ngrok
+name: Telegram BigFile Bot
 
 on:
   workflow_dispatch:
@@ -13,106 +13,57 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install requests pyngrok
+        run: pip install telethon pyngrok requests
 
-      - name: Run Telegram Bot with Ngrok
+      - name: Run Telegram Bot with Telethon
         env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
           python - <<'PY'
-          import os, requests, time, uuid
+          import os, asyncio, uuid
+          from telethon import TelegramClient, events
           from http.server import SimpleHTTPRequestHandler, HTTPServer
           import threading
           from pyngrok import ngrok
 
-          TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
-          API = f"https://api.telegram.org/bot{TOKEN}"
+          # 📌 Config
+          api_id = int(os.environ['TELEGRAM_API_ID'])
+          api_hash = os.environ['TELEGRAM_API_HASH']
+          bot_token = os.environ['TELEGRAM_BOT_TOKEN']
 
-          # 📂 ساخت پوشه مخصوص فایل‌ها
+          # 📂 پوشه فایل‌ها
           os.makedirs("files", exist_ok=True)
           os.chdir("files")
 
-          # 📌 راه‌اندازی HTTP Server لوکال
+          # 📌 HTTP server
           def start_server():
               httpd = HTTPServer(('0.0.0.0', 8080), SimpleHTTPRequestHandler)
               httpd.serve_forever()
-
           threading.Thread(target=start_server, daemon=True).start()
 
           # 📌 Ngrok
-          auth = os.environ.get("NGROK_AUTH_TOKEN")
-          if auth:
-              ngrok.set_auth_token(auth)
+          ngrok.set_auth_token(os.environ['NGROK_AUTH_TOKEN'])
           public_url = ngrok.connect(8080, "http").public_url
           print("🌍 Public URL:", public_url)
 
-          def get_updates(offset=None):
-              r = requests.get(f"{API}/getUpdates", params={"timeout": 30, "offset": offset})
-              return r.json().get("result", [])
+          # 📌 Telethon client
+          client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
 
-          def send_message(chat_id, text):
-              requests.post(f"{API}/sendMessage", data={"chat_id": chat_id, "text": text})
+          @client.on(events.NewMessage(pattern='/start'))
+          async def start(event):
+              await event.respond("سلام 👋 فایل، ویدیو یا عکس رو بفرست تا لینکشو بهت بدم.")
 
-          def download_file(file_id, filename):
-              g = requests.get(f"{API}/getFile?file_id={file_id}").json()
-              if not g.get("ok"):
-                  print("❌ getFile failed:", g)
-                  return None
-              file_path = g["result"]["file_path"]
-              url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
-              data = requests.get(url).content
-              with open(filename, "wb") as f:
-                  f.write(data)
-              return filename
-
-          def handle_media(chat_id, media_type, msg):
-              if media_type == "document":
-                  file_id = msg["document"]["file_id"]
-                  orig_name = msg["document"].get("file_name", "document.bin")
-              elif media_type == "video":
-                  file_id = msg["video"]["file_id"]
-                  orig_name = "video.mp4"
-              elif media_type == "photo":
-                  file_id = msg["photo"][-1]["file_id"]
-                  orig_name = "photo.jpg"
-              else:
-                  send_message(chat_id, "❌ نوع فایل پشتیبانی نمی‌شود.")
-                  return
-
-              # 📌 نام‌گذاری یکتا
-              unique_name = f"{uuid.uuid4().hex}_{orig_name}"
-              local_file = download_file(file_id, unique_name)
-
-              if local_file:
-                  link = f"{public_url}/{local_file}"
-                  send_message(chat_id, f"📥 لینک دانلود:\n{link}")
-              else:
-                  send_message(chat_id, "❌ نتونستم فایل رو دانلود کنم. دوباره امتحان کن.")
+          @client.on(events.NewMessage)
+          async def handler(event):
+              if event.message.media:
+                  unique_name = f"{uuid.uuid4().hex}"
+                  path = await client.download_media(event.message.media, file=unique_name)
+                  link = f"{public_url}/{os.path.basename(path)}"
+                  await event.respond(f"📥 لینک دانلود:\n{link}")
 
           print("🤖 Bot started, running for ~1 hour...")
-          offset = None
-          start_time = time.time()
-
-          while True:
-              updates = get_updates(offset)
-              for u in updates:
-                  offset = u["update_id"] + 1
-                  msg = u.get("message", {})
-                  chat_id = msg.get("chat", {}).get("id")
-
-                  if "text" in msg and msg["text"] == "/start":
-                      send_message(chat_id, "سلام 👋 فایل، ویدیو یا عکس رو بفرست تا لینکشو بهت بدم.")
-
-                  if "document" in msg:
-                      handle_media(chat_id, "document", msg)
-                  elif "video" in msg:
-                      handle_media(chat_id, "video", msg)
-                  elif "photo" in msg:
-                      handle_media(chat_id, "photo", msg)
-
-              if time.time() - start_time > 3600:  # ⏰ یک ساعت
-                  print("⏰ Time is up, bot shutting down.")
-                  break
-              time.sleep(2)
+          client.run_until_disconnected()
           PY
