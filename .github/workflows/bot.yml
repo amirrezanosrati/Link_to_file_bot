@@ -21,13 +21,17 @@ jobs:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
           python - <<'PY'
-          import os, requests, time
+          import os, requests, time, uuid
           from http.server import SimpleHTTPRequestHandler, HTTPServer
           import threading
           from pyngrok import ngrok
 
           TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
           API = f"https://api.telegram.org/bot{TOKEN}"
+
+          # 📂 ساخت پوشه مخصوص فایل‌ها
+          os.makedirs("files", exist_ok=True)
+          os.chdir("files")
 
           # 📌 راه‌اندازی HTTP Server لوکال
           def start_server():
@@ -60,21 +64,22 @@ jobs:
               return filename
 
           def handle_media(chat_id, media_type, msg):
-              filename = None
               if media_type == "document":
                   file_id = msg["document"]["file_id"]
-                  filename = msg["document"]["file_name"]
+                  orig_name = msg["document"]["file_name"]
               elif media_type == "video":
                   file_id = msg["video"]["file_id"]
-                  filename = "video.mp4"
+                  orig_name = "video.mp4"
               elif media_type == "photo":
-                  file_id = msg["photo"][-1]["file_id"]  # آخرین کیفیت
-                  filename = "photo.jpg"
+                  file_id = msg["photo"][-1]["file_id"]
+                  orig_name = "photo.jpg"
               else:
                   send_message(chat_id, "❌ نوع فایل پشتیبانی نمی‌شود.")
                   return
 
-              local_file = download_file(file_id, filename)
+              # 📌 نام‌گذاری یکتا
+              unique_name = f"{uuid.uuid4().hex}_{orig_name}"
+              local_file = download_file(file_id, unique_name)
               link = f"{public_url}/{local_file}"
               send_message(chat_id, f"📥 لینک دانلود:\n{link}")
 
