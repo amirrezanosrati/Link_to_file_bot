@@ -1,4 +1,4 @@
-name: Telegram Bot Test (1 hour)
+name: Telegram Bot with Ngrok
 
 on:
   workflow_dispatch:
@@ -12,18 +12,36 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install requests
-        run: pip install requests
+      - name: Install deps
+        run: pip install requests pyngrok
 
-      - name: Run Telegram Bot
+      - name: Run Telegram Bot with Ngrok
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
           python - <<'PY'
           import os, requests, time
+          from http.server import SimpleHTTPRequestHandler, HTTPServer
+          import threading
+          from pyngrok import ngrok
 
           TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
           API = f"https://api.telegram.org/bot{TOKEN}"
+
+          # 📌 راه‌اندازی HTTP Server لوکال
+          def start_server():
+              httpd = HTTPServer(('0.0.0.0', 8080), SimpleHTTPRequestHandler)
+              httpd.serve_forever()
+
+          threading.Thread(target=start_server, daemon=True).start()
+
+          # 📌 Ngrok
+          auth = os.environ.get("NGROK_AUTH_TOKEN")
+          if auth:
+              ngrok.set_auth_token(auth)
+          public_url = ngrok.connect(8080, "http")
+          print("🌍 Public URL:", public_url)
 
           def get_updates(offset=None):
               r = requests.get(f"{API}/getUpdates", params={"timeout": 30, "offset": offset})
@@ -32,11 +50,33 @@ jobs:
           def send_message(chat_id, text):
               requests.post(f"{API}/sendMessage", data={"chat_id": chat_id, "text": text})
 
-          def handle_document(chat_id, file_id):
+          def download_file(file_id, filename):
               g = requests.get(f"{API}/getFile?file_id={file_id}").json()
               file_path = g["result"]["file_path"]
-              link = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
-              send_message(chat_id, f"📥 لینک دانلود فایل:\n{link}")
+              url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+              data = requests.get(url).content
+              with open(filename, "wb") as f:
+                  f.write(data)
+              return filename
+
+          def handle_media(chat_id, media_type, msg):
+              filename = None
+              if media_type == "document":
+                  file_id = msg["document"]["file_id"]
+                  filename = msg["document"]["file_name"]
+              elif media_type == "video":
+                  file_id = msg["video"]["file_id"]
+                  filename = "video.mp4"
+              elif media_type == "photo":
+                  file_id = msg["photo"][-1]["file_id"]  # آخرین کیفیت
+                  filename = "photo.jpg"
+              else:
+                  send_message(chat_id, "❌ نوع فایل پشتیبانی نمی‌شود.")
+                  return
+
+              local_file = download_file(file_id, filename)
+              link = f"{public_url}/{local_file}"
+              send_message(chat_id, f"📥 لینک دانلود:\n{link}")
 
           print("🤖 Bot started, running for ~1 hour...")
           offset = None
@@ -50,13 +90,16 @@ jobs:
                   chat_id = msg.get("chat", {}).get("id")
 
                   if "text" in msg and msg["text"] == "/start":
-                      send_message(chat_id, "سلام 👋 فایل رو بفرست تا لینکش رو بدم.")
+                      send_message(chat_id, "سلام 👋 فایل، ویدیو یا عکس رو بفرست تا لینکشو بهت بدم.")
 
                   if "document" in msg:
-                      file_id = msg["document"]["file_id"]
-                      handle_document(chat_id, file_id)
+                      handle_media(chat_id, "document", msg)
+                  elif "video" in msg:
+                      handle_media(chat_id, "video", msg)
+                  elif "photo" in msg:
+                      handle_media(chat_id, "photo", msg)
 
-              if time.time() - start_time > 3600:  # 1 ساعت
+              if time.time() - start_time > 3600:  # ⏰ یک ساعت
                   print("⏰ Time is up, bot shutting down.")
                   break
               time.sleep(2)
